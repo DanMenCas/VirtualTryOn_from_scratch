@@ -142,11 +142,41 @@ class SEBlock(nn.Module):
         # Scale the original input
         return x * y.expand_as(x)
 
+
+class SelfAttention(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.channels = channels
+        self.mha = nn.MultiheadAttention(channels, num_heads=4, batch_first=True)
+        self.ln = nn.LayerNorm([channels])
+        self.ff_self = nn.Sequential(
+            nn.LayerNorm([channels]),
+            nn.Linear(channels, channels),
+            nn.SiLU(),
+            nn.Linear(channels, channels),
+        )
+
+    def forward(self, x):
+        size = x.shape[-1]
+        # Reshape for Attention: (Batch, Channels, H, W) -> (Batch, H*W, Channels)
+        x = x.view(-1, self.channels, size * size).swapaxes(1, 2)
+
+        # Norm and Attention
+        x_ln = self.ln(x)
+        attention_value, _ = self.mha(x_ln, x_ln, x_ln)
+        x = x + attention_value
+
+        # Feed Forward
+        x = x + self.ff_self(x)
+
+        # Reshape back: (Batch, H*W, Channels) -> (Batch, Channels, H, W)
+        return x.swapaxes(1, 2).view(-1, self.channels, size, size)
+
 class ContractingBlock(nn.Module):
     """
     Encoder blocks of the Unet, using two convolutions, SE Block and residual connections.
     """
-    def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False):
+    def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False, use_attention=False):
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.activation = nn.SiLU()
@@ -163,7 +193,11 @@ class ContractingBlock(nn.Module):
             self.dropout = nn.Dropout(0.3)
         self.use_dropout = use_dropout
 
+        self.use_attention = use_attention
+
         self.se = SEBlock(out_channels)
+
+        self.selfatt = SelfAttention(out_channels)
 
     def forward(self, x, time_emb):
         identity = self.residual_conv(x)
@@ -176,9 +210,10 @@ class ContractingBlock(nn.Module):
         x = self.norm2(x, time_emb)
         if self.use_dropout:
             x = self.dropout(x)
-        x = self.activation(x)
+        skip_features = self.activation(x)
 
-        x = self.se(x)
+        if self.use_attention:
+            skip_features = self.selfatt(skip_features)
 
         x = self.downsample(x + identity)
         return x
@@ -187,7 +222,7 @@ class ExpandingBlock(nn.Module):
     """
     Decoder blocks of the Unet, using two convolutions, SE Block, residual connections and skip connections.
     """
-    def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False):
+    def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False, use_attention=False):
         super().__init__()
         self.upsample = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
 
@@ -202,6 +237,10 @@ class ExpandingBlock(nn.Module):
             self.dropout = nn.Dropout(0.3)
         self.use_dropout = use_dropout
 
+        self.use_attention = use_attention
+
+        self.selfatt = SelfAttention(out_channels)
+
         self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
         self.se = SEBlock(out_channels)
@@ -213,6 +252,47 @@ class ExpandingBlock(nn.Module):
              x = torch.nn.functional.interpolate(x, size=skip_con_x.shape[2:], mode='nearest')
         # Skip connection
         x = torch.cat([x, skip_con_x], dim=1)
+
+        identity = self.residual_conv(x)
+
+        x = self.conv1(x)
+        x = self.norm1(x, time_emb)
+        x = self.activation(x)
+
+        x = self.conv2(x)
+        x = self.norm2(x, time_emb)
+        if self.use_dropout:
+            x = self.dropout(x)
+        x = self.activation(x)
+
+        if self.use_attention:
+            x = self.selfatt(x)
+
+        return x + identity
+
+class BottleNeck(nn.Module):
+    """
+    Decoder blocks of the Unet, using two convolutions, SE Block, residual connections and skip connections.
+    """
+    def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.norm1 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.norm2 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+
+        self.activation = nn.SiLU()
+        if use_dropout:
+            self.dropout = nn.Dropout(0.3)
+        self.use_dropout = use_dropout
+
+        self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+        self.se = SEBlock(out_channels)
+
+    def forward(self, x, time_emb):
 
         identity = self.residual_conv(x)
 
@@ -241,7 +321,7 @@ class UNet(nn.Module):
     """
     Unet network using six encoder layers and six decoder layers.
     """
-    def __init__(self, input_channels, output_channels, hidden_channels=64, time_emb_dim=256): # Added time_emb_dim
+    def __init__(self, input_channels, output_channels, hidden_channels=256, time_emb_dim=256): # Added time_emb_dim
         super().__init__()
 
         # Applying an MLP to the Sinusoidal positional embedding to create a richer vector of the time (t).
@@ -254,48 +334,36 @@ class UNet(nn.Module):
         )
         self.time_emb_dim = time_emb_dim
 
-
         self.upfeature = FeatureMapBlock(input_channels, hidden_channels)
 
+        self.contract1 = ContractingBlock(hidden_channels, hidden_channels*2, time_emb_dim)
+        self.contract2 = ContractingBlock(hidden_channels*2, hidden_channels*4, time_emb_dim, use_attention=True)
+        self.contract3 = ContractingBlock(hidden_channels*4, hidden_channels*8, time_emb_dim, use_attention=True)
 
-        self.contract1 = ContractingBlock(hidden_channels, hidden_channels * 2, time_emb_dim)
-        self.contract2 = ContractingBlock(hidden_channels * 2, hidden_channels * 4, time_emb_dim)
-        self.contract3 = ContractingBlock(hidden_channels * 4, hidden_channels * 8, time_emb_dim)
-        self.contract4 = ContractingBlock(hidden_channels * 8, hidden_channels * 16, time_emb_dim)
-        self.contract5 = ContractingBlock(hidden_channels * 16, hidden_channels * 32, time_emb_dim)
-        self.contract6 = ContractingBlock(hidden_channels * 32, hidden_channels * 64, time_emb_dim)
+        self.bottleneck = BottleNeck(hidden_channels*8, hidden_channels*8, time_emb_dim)
 
-
-        self.expand0 = ExpandingBlock(hidden_channels * 64, hidden_channels * 32, time_emb_dim)
-        self.expand1 = ExpandingBlock(hidden_channels * 32, hidden_channels * 16, time_emb_dim)
-        self.expand2 = ExpandingBlock(hidden_channels * 16, hidden_channels * 8, time_emb_dim)
-        self.expand3 = ExpandingBlock(hidden_channels * 8, hidden_channels * 4, time_emb_dim)
-        self.expand4 = ExpandingBlock(hidden_channels * 4, hidden_channels * 2, time_emb_dim)
-        self.expand5 = ExpandingBlock(hidden_channels * 2, hidden_channels, time_emb_dim)
-
+        self.expand0 = ExpandingBlock(hidden_channels*8, hidden_channels*4, time_emb_dim, use_attention=True)
+        self.expand1 = ExpandingBlock(hidden_channels*4, hidden_channels*2, time_emb_dim, use_attention=True)
+        self.expand2 = ExpandingBlock(hidden_channels*2, hidden_channels, time_emb_dim)
 
         self.downfeature = FeatureMapBlock(hidden_channels, output_channels)
 
     def forward(self, x, time):
         time_emb = self.time_mlp(time)
 
-
         x0 = self.upfeature(x)
-        x1 = self.contract1(x0, time_emb)
-        x2 = self.contract2(x1, time_emb)
-        x3 = self.contract3(x2, time_emb)
-        x4 = self.contract4(x3, time_emb)
-        x5 = self.contract5(x4, time_emb)
-        x6 = self.contract6(x5, time_emb)
 
-        x7 = self.expand0(x6, x5, time_emb)
-        x8 = self.expand1(x7, x4, time_emb)
-        x9 = self.expand2(x8, x3, time_emb)
-        x10 = self.expand3(x9, x2, time_emb)
-        x11 = self.expand4(x10, x1, time_emb)
-        x12 = self.expand5(x11, x0, time_emb)
+        x1 = self.contract1(x0, time_emb) # 32x32
+        x2 = self.contract2(x1, time_emb) # 16x16
+        x3 = self.contract3(x2, time_emb) # 8x8
 
-        xn = self.downfeature(x12)
+        x4 = self.bottleneck(x3, time_emb) # 8x8
 
-        return xn
+        x5 = self.expand0(x4, x2, time_emb) # 16x16
+        x6 = self.expand1(x5, x1, time_emb) # 32x32
+        x7 = self.expand2(x6, x0, time_emb) # 64x64
+
+        x8 = self.downfeature(x7)
+
+        return x8
 
