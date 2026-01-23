@@ -1,18 +1,7 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.transforms as T
-import torch.optim.lr_scheduler as lr_scheduler
-import matplotlib.pyplot as plt
-import numpy as np
-import os
 import math
-from torchvision.transforms import ToPILImage
-from torchvision import models
-from torchvision import transforms
-from PIL import Image
-from diffusers import AutoencoderKL
 
 
 class NoiseScheduler:
@@ -120,29 +109,6 @@ class AdaptiveGroupNorm(nn.Module):
         output = normed_x * (1 + scale) + shift
         return output
 
-class SEBlock(nn.Module):
-    def __init__(self, channels, reduction=16):
-        super(SEBlock, self).__init__()
-        # Global Average Pooling
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        # Fully Connected Layers (bottleneck)
-        self.fc = nn.Sequential(
-            nn.Linear(channels, channels // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(channels // reduction, channels, bias=False),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        # Squeeze: Global pooling
-        y = self.avg_pool(x).view(b, c)
-        # Excitation: Learn weights
-        y = self.fc(y).view(b, c, 1, 1)
-        # Scale the original input
-        return x * y.expand_as(x)
-
-
 class SelfAttention(nn.Module):
     def __init__(self, channels):
         super().__init__()
@@ -174,7 +140,7 @@ class SelfAttention(nn.Module):
 
 class ContractingBlock(nn.Module):
     """
-    Encoder blocks of the Unet, using two convolutions, SE Block and residual connections.
+    Encoder blocks of the Unet, using two convolutions, Self Attention and residual connections.
     """
     def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False, use_attention=False):
         super().__init__()
@@ -195,8 +161,6 @@ class ContractingBlock(nn.Module):
 
         self.use_attention = use_attention
 
-        self.se = SEBlock(out_channels)
-
         self.selfatt = SelfAttention(out_channels)
 
     def forward(self, x, time_emb):
@@ -213,14 +177,14 @@ class ContractingBlock(nn.Module):
         skip_features = self.activation(x)
 
         if self.use_attention:
-            skip_features = self.selfatt(skip_features)
+            skip_features = self.selfatt(skip_features + identity)
 
-        x = self.downsample(x + identity)
+        x = self.downsample(skip_features)
         return x
 
 class ExpandingBlock(nn.Module):
     """
-    Decoder blocks of the Unet, using two convolutions, SE Block, residual connections and skip connections.
+    Decoder blocks of the Unet, using two convolutions, Self Attention, residual connections and skip connections.
     """
     def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False, use_attention=False):
         super().__init__()
@@ -243,8 +207,6 @@ class ExpandingBlock(nn.Module):
 
         self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
-        self.se = SEBlock(out_channels)
-
     def forward(self, x, skip_con_x, time_emb):
         x = self.upsample(x)
 
@@ -266,15 +228,15 @@ class ExpandingBlock(nn.Module):
         x = self.activation(x)
 
         if self.use_attention:
-            x = self.selfatt(x)
+            x = self.selfatt(x + identity)
 
-        return x + identity
+        return x
 
 class BottleNeck(nn.Module):
     """
-    Decoder blocks of the Unet, using two convolutions, SE Block, residual connections and skip connections.
+    Decoder blocks of the Unet, using two convolutions, residual connections and skip connections.
     """
-    def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False):
+    def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False, use_attention=False):
         super().__init__()
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
@@ -288,9 +250,11 @@ class BottleNeck(nn.Module):
             self.dropout = nn.Dropout(0.3)
         self.use_dropout = use_dropout
 
-        self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.use_attention = use_attention
 
-        self.se = SEBlock(out_channels)
+        self.selfatt = SelfAttention(out_channels)
+
+        self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
     def forward(self, x, time_emb):
 
@@ -306,9 +270,10 @@ class BottleNeck(nn.Module):
             x = self.dropout(x)
         x = self.activation(x)
 
-        x = self.se(x)
+        if self.use_attention:
+            x = self.selfatt(x + identity)
 
-        return x + identity
+        return x
 
 class FeatureMapBlock(nn.Module):
     def __init__(self, input_channels, output_channels):
@@ -340,7 +305,7 @@ class UNet(nn.Module):
         self.contract2 = ContractingBlock(hidden_channels*2, hidden_channels*4, time_emb_dim, use_attention=True)
         self.contract3 = ContractingBlock(hidden_channels*4, hidden_channels*8, time_emb_dim, use_attention=True)
 
-        self.bottleneck = BottleNeck(hidden_channels*8, hidden_channels*8, time_emb_dim)
+        self.bottleneck = BottleNeck(hidden_channels*8, hidden_channels*8, time_emb_dim, use_attention=True)
 
         self.expand0 = ExpandingBlock(hidden_channels*8, hidden_channels*4, time_emb_dim, use_attention=True)
         self.expand1 = ExpandingBlock(hidden_channels*4, hidden_channels*2, time_emb_dim, use_attention=True)
