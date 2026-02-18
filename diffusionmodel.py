@@ -146,10 +146,10 @@ class ContractingBlock(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
         self.activation = nn.SiLU()
-        self.norm1 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+        self.norm1 = AdaptiveGroupNorm(num_groups=32, num_channels=out_channels, time_emb_dim=time_emb_dim)
 
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
-        self.norm2 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+        self.norm2 = AdaptiveGroupNorm(num_groups=32, num_channels=out_channels, time_emb_dim=time_emb_dim)
 
         self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
@@ -174,12 +174,14 @@ class ContractingBlock(nn.Module):
         x = self.norm2(x, time_emb)
         if self.use_dropout:
             x = self.dropout(x)
-        skip_features = self.activation(x)
+        x = self.activation(x)
+
+        x = x + identity
 
         if self.use_attention:
-            skip_features = self.selfatt(skip_features + identity)
+            x = self.selfatt(x)
 
-        x = self.downsample(skip_features)
+        x = self.downsample(x)
         return x
 
 class ExpandingBlock(nn.Module):
@@ -188,13 +190,16 @@ class ExpandingBlock(nn.Module):
     """
     def __init__(self, in_channels, out_channels, time_emb_dim, use_dropout=False, use_attention=False):
         super().__init__()
-        self.upsample = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+        self.upsample = nn.Sequential(
+            nn.Upsample(scale_factor=2.0, mode="nearest"),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        )
 
         self.conv1 = nn.Conv2d(out_channels * 2, out_channels, kernel_size=3, padding=1)
-        self.norm1 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+        self.norm1 = AdaptiveGroupNorm(num_groups=32, num_channels=out_channels, time_emb_dim=time_emb_dim)
 
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
-        self.norm2 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+        self.norm2 = AdaptiveGroupNorm(num_groups=32, num_channels=out_channels, time_emb_dim=time_emb_dim)
 
         self.activation = nn.SiLU()
         if use_dropout:
@@ -227,8 +232,10 @@ class ExpandingBlock(nn.Module):
             x = self.dropout(x)
         x = self.activation(x)
 
+        x = x + identity
+
         if self.use_attention:
-            x = self.selfatt(x + identity)
+            x = self.selfatt(x)
 
         return x
 
@@ -240,10 +247,10 @@ class BottleNeck(nn.Module):
         super().__init__()
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.norm1 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+        self.norm1 = AdaptiveGroupNorm(num_groups=32, num_channels=out_channels, time_emb_dim=time_emb_dim)
 
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
-        self.norm2 = AdaptiveGroupNorm(num_groups=8, num_channels=out_channels, time_emb_dim=time_emb_dim)
+        self.norm2 = AdaptiveGroupNorm(num_groups=32, num_channels=out_channels, time_emb_dim=time_emb_dim)
 
         self.activation = nn.SiLU()
         if use_dropout:
@@ -270,8 +277,10 @@ class BottleNeck(nn.Module):
             x = self.dropout(x)
         x = self.activation(x)
 
+        x = x + identity
+
         if self.use_attention:
-            x = self.selfatt(x + identity)
+            x = self.selfatt(x)
 
         return x
 
