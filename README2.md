@@ -17,13 +17,13 @@
 
 ## ✨ Results
 
-| Person | Clothing | Try-On Result |
-|--------|----------|----------------|
-| <img width="150" src="https://github.com/user-attachments/assets/0ae36f07-c350-46a4-8fb4-0d124d1f4311" /> | <img width="150" src="https://github.com/user-attachments/assets/481bdc94-f756-451a-ab11-95b0c2d6a92c" /> | <img width="150" src="https://github.com/user-attachments/assets/a8aa9120-7f72-43e6-aa6a-12adefed5824" /> |
-| <img width="150" src="https://github.com/user-attachments/assets/0ae36f07-c350-46a4-8fb4-0d124d1f4311" /> | <img width="150" src="https://github.com/user-attachments/assets/ec42dfd8-f095-4e70-a1ff-281c3fb258e0" /> | <img width="150" src="https://github.com/user-attachments/assets/490147d0-92a1-4a2e-9d0d-7b578ce4b91e" /> |
-| <img width="150" src="https://github.com/user-attachments/assets/852d98fe-fd0d-495e-91ad-1eb3f7a91524" /> | <img width="150" src="https://github.com/user-attachments/assets/4464a890-aafc-4765-a480-1e9a5c75ac86" /> | <img width="150" src="https://github.com/user-attachments/assets/c61a7bfc-8562-4d24-8fa6-144fff226a16" /> |
+| Person | Clothing | Try-On Result v2 | Try-On Result v2 |
+|--------|----------|------------------|------------------|
+| <img width="150" src="https://github.com/user-attachments/assets/0ae36f07-c350-46a4-8fb4-0d124d1f4311" /> | <img width="150" src="https://github.com/user-attachments/assets/481bdc94-f756-451a-ab11-95b0c2d6a92c" /> | <img width="150" src="https://github.com/user-attachments/assets/a8aa9120-7f72-43e6-aa6a-12adefed5824" /> |<img width="200" height="256" alt="image" src="https://github.com/user-attachments/assets/d2defbe8-3beb-419c-b7b9-0092215c00e1" />
+| <img width="150" src="https://github.com/user-attachments/assets/0ae36f07-c350-46a4-8fb4-0d124d1f4311" /> | <img width="150" src="https://github.com/user-attachments/assets/ec42dfd8-f095-4e70-a1ff-281c3fb258e0" /> | <img width="150" src="https://github.com/user-attachments/assets/490147d0-92a1-4a2e-9d0d-7b578ce4b91e" /> |<img width="200" height="256" alt="image" src="https://github.com/user-attachments/assets/75188fc7-8e93-46b6-a388-12049a0a7d16" />
+| <img width="150" src="https://github.com/user-attachments/assets/852d98fe-fd0d-495e-91ad-1eb3f7a91524" /> | <img width="150" src="https://github.com/user-attachments/assets/4464a890-aafc-4765-a480-1e9a5c75ac86" /> | <img width="150" src="https://github.com/user-attachments/assets/c61a7bfc-8562-4d24-8fa6-144fff226a16" /> |<img width="200" height="256" alt="image" src="https://github.com/user-attachments/assets/2d2968fe-71a3-4138-8fd0-f1718d9acf1b" />
 
-> 🔝 Last row = latest model (self-attention U-Net, 5k dataset, batch size 10)
+> 🔝 Last column = latest model (self-attention U-Net, 5k dataset, batch size 10)
 
 ---
 
