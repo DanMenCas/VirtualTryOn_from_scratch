@@ -17,7 +17,7 @@
 
 ## ✨ Results
 
-| Person | Clothing | Try-On Result v2 | Try-On Result v2 |
+| Person | Clothing | Try-On Result v1 | Try-On Result v3 |
 |--------|----------|------------------|------------------|
 | <img width="150" src="https://github.com/user-attachments/assets/0ae36f07-c350-46a4-8fb4-0d124d1f4311" /> | <img width="150" src="https://github.com/user-attachments/assets/481bdc94-f756-451a-ab11-95b0c2d6a92c" /> | <img width="150" src="https://github.com/user-attachments/assets/a8aa9120-7f72-43e6-aa6a-12adefed5824" /> |<img width="200" height="256" alt="image" src="https://github.com/user-attachments/assets/d2defbe8-3beb-419c-b7b9-0092215c00e1" />
 | <img width="150" src="https://github.com/user-attachments/assets/0ae36f07-c350-46a4-8fb4-0d124d1f4311" /> | <img width="150" src="https://github.com/user-attachments/assets/ec42dfd8-f095-4e70-a1ff-281c3fb258e0" /> | <img width="150" src="https://github.com/user-attachments/assets/490147d0-92a1-4a2e-9d0d-7b578ce4b91e" /> |<img width="200" height="256" alt="image" src="https://github.com/user-attachments/assets/75188fc7-8e93-46b6-a388-12049a0a7d16" />
