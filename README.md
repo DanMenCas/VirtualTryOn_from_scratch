@@ -152,7 +152,7 @@ Download model weights from [HuggingFace](https://huggingface.co/dmc98/viton_mod
 
 ## 👤 Author
 
-**Daniel Mendez** · ML Engineer  
+**Daniel Mendoza** · ML Engineer  
 [resviss.com](https://www.resviss.com) · [HuggingFace](https://huggingface.co/dmc98)
 
 > Built with limited compute to prove the pipeline works. Imagine what's possible at scale.
